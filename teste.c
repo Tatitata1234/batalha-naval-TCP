@@ -39,7 +39,6 @@ typedef struct Navio {
 typedef struct Erro {
     bool isSuccess;
     char mensagem[50];
-    int aux;
     int jogada[2];
 } Erro;
 
@@ -177,7 +176,6 @@ void seuMapa() {
 
 int converterJsonParaNavios(const char *jsonStr) {
     
-
     cJSON *json = cJSON_Parse(jsonStr);
     if (!json) {
         fprintf(stderr, "Erro ao analisar o JSON\n");
@@ -325,6 +323,7 @@ void recebeNavio(char *nome, int tamanho, int posicao) {
 }
 
 void inicializaNaviosJogador() {
+    system("clear");
     preencheComZerosGradeJog();
     seuMapa();
     printf("Antes de começar o jogo vamos posicionar os Navios!\n");
@@ -347,27 +346,31 @@ void inicializaNaviosJogador() {
 
     seuMapa();
     recebeNavio("Porta-aviões", 5, 0);
+    system("clear");
     seuMapa();
     recebeNavio("Encouraçado", 4, 1);
+    system("clear");
     seuMapa();
 
     int i = 0;
     do {
         recebeNavio("Cruzador", 3, (2 + i));
+        system("clear");
         i++;
         seuMapa();
     } while (i < 2);
-
     i = 0;
     do {
         recebeNavio("Destróier", 2, (4 + i));
+        system("clear");
         i++;
         seuMapa();
     } while (i < 2);
+    system("clear");
 }
 
 void telaJogo() {
-    //system("clear");
+    system("clear");
     printf("---------------------\n");
     printf("----Batalha Naval----\n");
     printf("---------------------\n");
@@ -562,7 +565,6 @@ Erro receberJogada(int rem_sockfd) {
 }
 
 void *mainServidor(void *arg) {
-    char **argv = (char **)arg;
     int sock;
     struct sockaddr_in me, from;
     socklen_t adl = sizeof(from);
@@ -615,6 +617,7 @@ void *mainServidor(void *arg) {
 
     //printf("JSON enviado para o cliente:\n%s\n", json);
 
+    telaJogo();
     printf("Esperando adversário posicionar os Navios...\n");
     recv(loc_newsockfd, &linha, sizeof(linha), 0);
     //printf("Recebi: %s\n", linha);
@@ -623,7 +626,7 @@ void *mainServidor(void *arg) {
     marcarNaviosAdversariosPosIncializacao();
     free(json); // Liberar a memória alocada para o JSON
 
-    //telaJogo();
+    telaJogo();
     printf("Você começa jogando...\n");
     printf("Envie a posição em que quer disparar o tiro\n");
     printf("Exemplo 2 2\n");
@@ -644,14 +647,16 @@ void *mainServidor(void *arg) {
 }
 
 void* mainCliente(void* arg) {
-    char **argv = (char**)arg;
     char *rem_hostname;
     int rem_port;
     /* Estrutura: familia + endereco IP + porta */
     struct sockaddr_in rem_addr;
     int rem_sockfd;
 
-    rem_hostname = argv[1];
+    char ipServ[INET_ADDRSTRLEN];
+    printf("Digite o IP do adversário:\n");
+    scanf("%s", ipServ);
+    rem_hostname = ipServ;
     rem_port = 8080;
     rem_addr.sin_family = AF_INET; /* familia do protocolo*/
     rem_addr.sin_addr.s_addr = inet_addr(rem_hostname); /* endereco IP local */
@@ -668,7 +673,7 @@ void* mainCliente(void* arg) {
         perror("Conectando stream socket");
         exit(1);
     }
-
+    telaJogo();
     printf("Esperando adversário posicionar os Navios...\n");
 
     char linha[1000];
@@ -710,6 +715,7 @@ int main(int argc, char *argv[]) {
 
     int controleMenu = 0;
     do {
+        system("clear");
         printf("---------------------\n");
         printf("----Batalha Naval----\n");
         printf("---------------------\n");
@@ -723,6 +729,7 @@ int main(int argc, char *argv[]) {
         switch (controleMenu) {
             case 1:
                 // Servidor
+                printf("Esperando o adversário conectar...\n");
                 if (pthread_create(tid + 1, 0, mainServidor, (void *)argv) != 0) {
                     perror("Erro ao criar thread do servidor....");
                     exit(1);
