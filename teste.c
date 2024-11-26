@@ -17,7 +17,6 @@
 char gradeJogador[TAMANHO_MAXIMO][TAMANHO_MAXIMO];
 char gradeAdversario[TAMANHO_MAXIMO][TAMANHO_MAXIMO];
 char gradeAdversarioResposta[TAMANHO_MAXIMO][TAMANHO_MAXIMO];
-char letras[10] = {'A','B','C','D','E','F','G','H','I','J'}; 
 char jogadasFeitas[100][2];
 int contJogFeitas = 0;
 int contNaviosAbatidos = 0;
@@ -564,7 +563,7 @@ Erro receberJogada(int rem_sockfd) {
     return erroGanhou;
 }
 
-void *mainServidor(void *arg) {
+void mainServidor() {
     int sock;
     struct sockaddr_in me, from;
     socklen_t adl = sizeof(from);
@@ -646,7 +645,7 @@ void *mainServidor(void *arg) {
     close(loc_newsockfd);
 }
 
-void* mainCliente(void* arg) {
+void mainCliente() {
     char *rem_hostname;
     int rem_port;
     /* Estrutura: familia + endereco IP + porta */
@@ -710,9 +709,6 @@ void* mainCliente(void* arg) {
 }
 
 int main(int argc, char *argv[]) {
-    pthread_t tid[4];
-    void *statusCli, *statusSer;
-
     int controleMenu = 0;
     do {
         system("clear");
@@ -721,8 +717,9 @@ int main(int argc, char *argv[]) {
         printf("---------------------\n");
 
         printf("1 - Iniciar a partida\n");
-        printf("2 - Entrar em uma partida corrente\n");
-        printf("3 - Sair\n");
+        printf("2 - Entrar em uma partida\n");
+        printf("3 - Entrar em uma partida salva\n");
+        printf("4 - Sair\n");
         scanf("%d", &controleMenu);
 
         preencheComZerosGrades();
@@ -730,28 +727,14 @@ int main(int argc, char *argv[]) {
             case 1:
                 // Servidor
                 printf("Esperando o adversário conectar...\n");
-                if (pthread_create(tid + 1, 0, mainServidor, (void *)argv) != 0) {
-                    perror("Erro ao criar thread do servidor....");
-                    exit(1);
-                }
-                if (pthread_join(tid[1], &statusSer) != 0) {
-                    perror("Erro no pthread_join() do servidor.");
-                    exit(1);
-                }
+                mainServidor();
                 break;
             case 2:
-                // Cliente
-                if (pthread_create(tid + 0, 0, mainCliente, (void *)argv) != 0) {
-                    perror("Erro ao criar thread do cliente....");
-                    exit(1);
-                }
-                // Esperando as threads terminarem
-                if (pthread_join(tid[0], &statusCli) != 0) {
-                    perror("Erro no pthread_join() do cliente.");
-                    exit(1);
-                }
+                mainCliente();
                 break;
             case 3:
+                break;
+            case 4:
                 printf("Saindo\n");
                 printf("Até a próxima!\n");
                 break;
@@ -761,6 +744,6 @@ int main(int argc, char *argv[]) {
                 break;
         }
         
-    } while (controleMenu!=3);
+    } while (controleMenu!=4);
     exit(0);
 }
