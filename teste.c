@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h>
-#include <pthread.h>
 #include <cjson/cJSON.h>
 
 #define TAMANHO_MAXIMO 10
