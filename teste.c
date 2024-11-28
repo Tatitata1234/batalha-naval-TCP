@@ -12,6 +12,7 @@
 
 #define TAMANHO_MAXIMO 10
 #define QUANTIDADE_NAVIOS 6
+#define MAX_JSON_SIZE 65536
 
 char gradeJogador[TAMANHO_MAXIMO][TAMANHO_MAXIMO];
 char gradeAdversario[TAMANHO_MAXIMO][TAMANHO_MAXIMO];
@@ -20,6 +21,8 @@ char jogadasFeitas[100][2];
 int contJogFeitas = 0;
 int contNaviosAbatidos = 0;
 int contNaviosAbatidosJog = 0;
+bool isServ;
+bool isJogadorVez;
 
 typedef struct Navio {
     int xi;
@@ -36,6 +39,7 @@ typedef struct Navio {
 
 typedef struct Erro {
     bool isSuccess;
+    bool isGanhou;
     char mensagem[50];
     int jogada[2];
 } Erro;
@@ -308,7 +312,7 @@ void recebeNavio(char *nome, int tamanho, int posicao) {
         int coluna = -1;
         int linha = -1;
         char dir = 'X';
-        scanf(" %d %d %c", &linha, &coluna, &dir);
+        scanf(" %1d%1d%1c", &linha, &coluna, &dir);
         Erro erro = posicionaNavio(coluna, linha, (char)dir, tamanho, posicao,nome);
         if (!erro.isSuccess) {
             printf(erro.mensagem);
@@ -472,18 +476,136 @@ Erro validaGanhou(bool isAdv) {
     Erro erro;
     if (contNaviosAbatidos == QUANTIDADE_NAVIOS) {
         erro.isSuccess = true;
+        erro.isGanhou = true;
         strcpy(erro.mensagem, "Você ganhou o jogo!");
         return erro;
     }
     
     if (contNaviosAbatidosJog == QUANTIDADE_NAVIOS) {
         erro.isSuccess = true;
+        erro.isGanhou = true;
         strcpy(erro.mensagem, "Você perdeu o jogo!");
         return erro;
     }
-    
+    erro.isGanhou = false;
     erro.isSuccess = false;
     return erro;
+}
+
+char* gerarJsonComVariaveis() {
+    cJSON *root = cJSON_CreateObject();
+
+    // Adiciona os bools
+    cJSON_AddBoolToObject(root, "isServ", isServ);
+    cJSON_AddBoolToObject(root, "isJogadorVez", isJogadorVez);
+
+    // Adiciona as grades
+    cJSON *gradeJogadorJson = cJSON_CreateArray();
+    cJSON *gradeAdversarioJson = cJSON_CreateArray();
+    cJSON *gradeAdversarioRespostaJson = cJSON_CreateArray();
+
+    for (int i = 0; i < TAMANHO_MAXIMO; i++) {
+        cJSON *linhaJogador = cJSON_CreateArray();
+        cJSON *linhaAdversario = cJSON_CreateArray();
+        cJSON *linhaResposta = cJSON_CreateArray();
+
+        for (int j = 0; j < TAMANHO_MAXIMO; j++) {
+            cJSON_AddItemToArray(linhaJogador, cJSON_CreateString((char[]){gradeJogador[i][j], '\0'}));
+            cJSON_AddItemToArray(linhaAdversario, cJSON_CreateString((char[]){gradeAdversario[i][j], '\0'}));
+            cJSON_AddItemToArray(linhaResposta, cJSON_CreateString((char[]){gradeAdversarioResposta[i][j], '\0'}));
+        }
+
+        cJSON_AddItemToArray(gradeJogadorJson, linhaJogador);
+        cJSON_AddItemToArray(gradeAdversarioJson, linhaAdversario);
+        cJSON_AddItemToArray(gradeAdversarioRespostaJson, linhaResposta);
+    }
+
+    cJSON_AddItemToObject(root, "gradeJogador", gradeJogadorJson);
+    cJSON_AddItemToObject(root, "gradeAdversario", gradeAdversarioJson);
+    cJSON_AddItemToObject(root, "gradeAdversarioResposta", gradeAdversarioRespostaJson);
+
+    // Adiciona as jogadas feitas
+    cJSON *jogadasJson = cJSON_CreateArray();
+    for (int i = 0; i < contJogFeitas; i++) {
+        cJSON *jogada = cJSON_CreateArray();
+        cJSON_AddItemToArray(jogada, cJSON_CreateNumber(jogadasFeitas[i][0]));
+        cJSON_AddItemToArray(jogada, cJSON_CreateNumber(jogadasFeitas[i][1]));
+        cJSON_AddItemToArray(jogadasJson, jogada);
+    }
+    cJSON_AddItemToObject(root, "jogadasFeitas", jogadasJson);
+
+    // Adiciona os contadores
+    cJSON_AddNumberToObject(root, "contJogFeitas", contJogFeitas);
+    cJSON_AddNumberToObject(root, "contNaviosAbatidos", contNaviosAbatidos);
+    cJSON_AddNumberToObject(root, "contNaviosAbatidosJog", contNaviosAbatidosJog);
+
+    // Função auxiliar para serializar um navio
+    cJSON* navioToJson(const Navio *navio) {
+        cJSON *jsonNavio = cJSON_CreateObject();
+        cJSON_AddNumberToObject(jsonNavio, "xi", navio->xi);
+        cJSON_AddNumberToObject(jsonNavio, "yi", navio->yi);
+        cJSON_AddNumberToObject(jsonNavio, "xf", navio->xf);
+        cJSON_AddNumberToObject(jsonNavio, "yf", navio->yf);
+        cJSON_AddNumberToObject(jsonNavio, "tamanho", navio->tamanho);
+        cJSON_AddStringToObject(jsonNavio, "direcao", (char[]){navio->direcao, '\0'});
+        cJSON_AddStringToObject(jsonNavio, "tipo", navio->tipo);
+
+        // Adiciona as posições
+        cJSON *posicoesJson = cJSON_CreateArray();
+        for (int i = 0; i < navio->tamanho; i++) {
+            cJSON *posicao = cJSON_CreateArray();
+            cJSON_AddItemToArray(posicao, cJSON_CreateNumber(navio->posicoes[i][0]));
+            cJSON_AddItemToArray(posicao, cJSON_CreateNumber(navio->posicoes[i][1]));
+            cJSON_AddItemToArray(posicoesJson, posicao);
+        }
+        cJSON_AddItemToObject(jsonNavio, "posicoes", posicoesJson);
+
+        cJSON_AddNumberToObject(jsonNavio, "contMorte", navio->contMorte);
+        cJSON_AddBoolToObject(jsonNavio, "morreu", navio->morreu);
+
+        return jsonNavio;
+    }
+
+    // Adiciona os navios
+    cJSON *naviosJogadorJson = cJSON_CreateArray();
+    cJSON *naviosAdversarioJson = cJSON_CreateArray();
+
+    for (int i = 0; i < QUANTIDADE_NAVIOS; i++) {
+        cJSON_AddItemToArray(naviosJogadorJson, navioToJson(&naviosJogador[i]));
+        cJSON_AddItemToArray(naviosAdversarioJson, navioToJson(&naviosAdversario[i]));
+    }
+
+    cJSON_AddItemToObject(root, "naviosJogador", naviosJogadorJson);
+    cJSON_AddItemToObject(root, "naviosAdversario", naviosAdversarioJson);
+
+    // Converte o objeto root em string JSON
+    char *jsonString = cJSON_Print(root);
+    cJSON_Delete(root);
+
+    return jsonString; // Deve ser liberado com free() após o uso.
+}
+
+void salvarJSONEmArquivo(char *nomeArquivo) {
+    char *jsonString = gerarJsonComVariaveis();
+    if (!jsonString) {
+        fprintf(stderr, "Erro ao gerar o JSON\n");
+        return;
+    }
+    // Abre o arquivo para escrita
+    FILE *arquivo = fopen(nomeArquivo, "w");
+    if (!arquivo) {
+        perror("Erro ao abrir o arquivo para escrita");
+        free(jsonString);
+        return;
+    }
+
+    fprintf(arquivo, "%s\n", jsonString);
+
+    // Libera a memória alocada para o JSON e fecha o arquivo
+    fclose(arquivo);
+    free(jsonString);
+
+    printf("JSON salvo com sucesso no arquivo: %s\n", nomeArquivo);
 }
 
 Erro jogar(int loc_newsockfd) {
@@ -496,7 +618,7 @@ Erro jogar(int loc_newsockfd) {
     do {
         int coluna = -1;
         int linha = -1;
-        scanf(" %d %d", &linha, &coluna);
+        scanf(" %1d%1d", &linha, &coluna);
         Erro erro = processaJogada(coluna, linha);
         if (!erro.isSuccess) {
             printf(erro.mensagem);
@@ -524,12 +646,20 @@ Erro jogar(int loc_newsockfd) {
                 printf(erroGanhou.mensagem);
             } else {
                 printf(erro.mensagem);
+                erroGanhou.isSuccess = true;
             }
             printf("\n");
         }
     } while (controle);
-   
-    send(loc_newsockfd, jogada, strlen(jogada), 0);
+    isJogadorVez = false;
+    if (send(loc_newsockfd, jogada, strlen(jogada), 0) < 0) {
+        close(loc_newsockfd);
+        Erro e;
+        e.isSuccess = false;
+        e.isGanhou = false;
+        return e;
+    }
+    salvarJSONEmArquivo("dados1.json");
     return erroGanhou;
 }
 
@@ -537,7 +667,13 @@ Erro receberJogada(int rem_sockfd) {
     //telaJogo();
     printf("Esperando o adversário jogar...\n");
     char jogada[3];
-    recv(rem_sockfd, &jogada, sizeof(jogada), 0);
+    if (recv(rem_sockfd, &jogada, sizeof(jogada), 0) < 0) {
+        close(rem_sockfd);
+        Erro e;
+        e.isSuccess = false;
+        e.isGanhou = false;
+        return e;
+    }
     //printf("Recebi %d %d\n", jogada[0] - '0', jogada[1] - '0');
     //printf("Recebi %s\n", jogada);
 
@@ -557,12 +693,15 @@ Erro receberJogada(int rem_sockfd) {
         printf(erroGanhou.mensagem);
     } else {
         printf(erro.mensagem);
+        erroGanhou.isSuccess = true;
     }
     printf("\n");
+    isJogadorVez = true;
+    salvarJSONEmArquivo("dados1.json");
     return erroGanhou;
 }
 
-void mainServidor() {
+Erro mainServidor() {
     int sock;
     struct sockaddr_in me, from;
     socklen_t adl = sizeof(from);
@@ -575,7 +714,9 @@ void mainServidor() {
 
     if (loc_sockfd < 0) {
         perror("Criando stream socket");
-        exit(1);
+        Erro e;
+        e.isSuccess = false;
+        return e;
     }
 
     /* Construcao da estrutura do endereco local */
@@ -589,7 +730,9 @@ void mainServidor() {
     /* parametros(descritor socket, estrutura do endereco local, comprimento do endereco) */
     if (bind(loc_sockfd, (struct sockaddr *)&loc_addr, sizeof(struct sockaddr)) < 0) {
         perror("Ligando stream socket");
-        exit(1);
+        Erro e;
+        e.isSuccess = false;
+        return e;
     }
 
     /* parametros(descritor socket,
@@ -610,14 +753,23 @@ void mainServidor() {
         close(loc_sockfd);
         close(loc_newsockfd);
         free(json);
-        exit(1);
+        Erro e;
+        e.isSuccess = false;
+        return e;
     }
 
     //printf("JSON enviado para o cliente:\n%s\n", json);
 
     telaJogo();
     printf("Esperando adversário posicionar os Navios...\n");
-    recv(loc_newsockfd, &linha, sizeof(linha), 0);
+    if (recv(loc_newsockfd, &linha, sizeof(linha), 0) < 0) {
+        close(loc_sockfd);
+        close(loc_newsockfd);
+        free(json);
+        Erro e;
+        e.isSuccess = false;
+        return e;
+    }
     //printf("Recebi: %s\n", linha);
     char *jsonAdv = linha;
     converterJsonParaNavios(jsonAdv);
@@ -627,15 +779,15 @@ void mainServidor() {
     telaJogo();
     printf("Você começa jogando...\n");
     printf("Envie a posição em que quer disparar o tiro\n");
-    printf("Exemplo 2 2\n");
+    printf("Exemplo 22\n");
 
     do {
         Erro er1 = jogar(loc_newsockfd);
-        if (er1.isSuccess) {
+        if (er1.isGanhou) {
             break;
         }
         Erro er2 = receberJogada(loc_newsockfd);
-        if (er2.isSuccess) {
+        if (er2.isGanhou) {
             break;
         }
     } while (true);
@@ -644,7 +796,7 @@ void mainServidor() {
     close(loc_newsockfd);
 }
 
-void mainCliente() {
+Erro mainCliente() {
     char *rem_hostname;
     int rem_port;
     /* Estrutura: familia + endereco IP + porta */
@@ -664,18 +816,26 @@ void mainCliente() {
     
     if (rem_sockfd < 0) {
         perror("Criando stream socket");
-        exit(1);
+        Erro e;
+        e.isSuccess = false;
+        return e;
     }
 
     if (connect(rem_sockfd, (struct sockaddr *) &rem_addr, sizeof(rem_addr)) < 0) {
         perror("Conectando stream socket");
-        exit(1);
+        Erro e;
+        e.isSuccess = false;
+        return e;
     }
     telaJogo();
     printf("Esperando adversário posicionar os Navios...\n");
 
     char linha[1000];
-    recv(rem_sockfd, linha, sizeof(linha), 0);
+    if (recv(rem_sockfd, linha, sizeof(linha), 0) < 0 ) {
+        Erro e;
+        e.isSuccess = false;
+        return e;
+    }
     //printf("JSON recebido do servidor:\n%s\n", linha);
 
     char *jsonAdv = linha;
@@ -684,37 +844,257 @@ void mainCliente() {
 
     inicializaNaviosJogador();
     char *json = gerarJSONComCJSON();
+    //printf("JSON enviado para o cliente:\n%s\n", json);
 
     if (send(rem_sockfd, json, strlen(json), 0) < 0) {
         perror("Erro ao enviar JSON para o servidor");
         close(rem_sockfd);
         free(json);
-        exit(1);
+        Erro e;
+        e.isSuccess = false;
+        return e;
     }
 
     free(json);
     do {
         Erro er2 = receberJogada(rem_sockfd);
-        if (er2.isSuccess) {
-            break;
+        if (er2.isGanhou) {
+            return er2;
         }
         Erro er1 = jogar(rem_sockfd);
-        if (er1.isSuccess) {
-            break;
+        if (er1.isGanhou) {
+            return er1;
         }
     } while (true);
 
     close(rem_sockfd);
 }
 
+void preencherGrade(char grade[TAMANHO_MAXIMO][TAMANHO_MAXIMO], cJSON *jsonGrade) {
+    for (int i = 0; i < TAMANHO_MAXIMO; i++) {
+        cJSON *linha = cJSON_GetArrayItem(jsonGrade, i);
+        for (int j = 0; j < TAMANHO_MAXIMO; j++) {
+            const char *celula = cJSON_GetArrayItem(linha, j)->valuestring;
+            grade[i][j] = celula[0]; // Primeiro caractere da string
+        }
+    }
+}
+
+void preencherNavios(Navio *navios, cJSON *jsonNavios) {
+    for (int i = 0; i < QUANTIDADE_NAVIOS; i++) {
+        cJSON *navio = cJSON_GetArrayItem(jsonNavios, i);
+
+        navios[i].xi = cJSON_GetObjectItem(navio, "xi")->valueint;
+        navios[i].yi = cJSON_GetObjectItem(navio, "yi")->valueint;
+        navios[i].xf = cJSON_GetObjectItem(navio, "xf")->valueint;
+        navios[i].yf = cJSON_GetObjectItem(navio, "yf")->valueint;
+        navios[i].tamanho = cJSON_GetObjectItem(navio, "tamanho")->valueint;
+        navios[i].direcao = cJSON_GetObjectItem(navio, "direcao")->valuestring[0];
+        strcpy(navios[i].tipo, cJSON_GetObjectItem(navio, "tipo")->valuestring);
+        navios[i].contMorte = cJSON_GetObjectItem(navio, "contMorte")->valueint;
+        navios[i].morreu = cJSON_GetObjectItem(navio, "morreu")->valueint;
+
+        cJSON *posicoes = cJSON_GetObjectItem(navio, "posicoes");
+        for (int j = 0; j < navios[i].tamanho; j++) {
+            cJSON *posicao = cJSON_GetArrayItem(posicoes, j);
+            navios[i].posicoes[j][0] = cJSON_GetArrayItem(posicao, 0)->valueint;
+            navios[i].posicoes[j][1] = cJSON_GetArrayItem(posicao, 1)->valueint;
+        }
+    }
+}
+
+void preencherVariaveisComJson(const char *jsonString) {
+    cJSON *json = cJSON_Parse(jsonString);
+    if (!json) {
+        printf("Erro ao fazer o parse do JSON.\n");
+        return;
+    }
+    // Preenchendo as grades
+    preencherGrade(gradeJogador, cJSON_GetObjectItem(json, "gradeJogador"));
+    preencherGrade(gradeAdversario, cJSON_GetObjectItem(json, "gradeAdversario"));
+    preencherGrade(gradeAdversarioResposta, cJSON_GetObjectItem(json, "gradeAdversarioResposta"));
+    // Preenchendo os navios
+    preencherNavios(naviosJogador, cJSON_GetObjectItem(json, "naviosJogador"));
+    preencherNavios(naviosAdversario, cJSON_GetObjectItem(json, "naviosAdversario"));
+    // Preenchendo as jogadas feitas
+    cJSON *jsonJogadas = cJSON_GetObjectItem(json, "jogadasJogador");
+    contJogFeitas = cJSON_GetArraySize(jsonJogadas);
+    for (int i = 0; i < contJogFeitas; i++) {
+        cJSON *jogada = cJSON_GetArrayItem(jsonJogadas, i);
+        jogadasFeitas[i][0] = cJSON_GetArrayItem(jogada, 0)->valueint;
+        jogadasFeitas[i][1] = cJSON_GetArrayItem(jogada, 1)->valueint;
+    }
+    // Preenchendo os contadores
+    contNaviosAbatidos = cJSON_GetObjectItem(json, "contNaviosAbatidos")->valueint;
+    contNaviosAbatidosJog = cJSON_GetObjectItem(json, "contNaviosAbatidosJog")->valueint;
+    cJSON *item = cJSON_GetObjectItem(json, "isJogadorVez");
+    if (cJSON_IsBool(item)) {  // Verifica se é booleano
+        isJogadorVez = cJSON_IsTrue(item);  // Retorna true ou false
+    } else {
+        printf("Erro: 'isJogadorVez' não é um booleano válido no JSON.\n");
+    }
+    item = cJSON_GetObjectItem(json, "isServ");
+    if (cJSON_IsBool(item)) {  // Verifica se é booleano
+        isServ = cJSON_IsTrue(item);  // Retorna true ou false
+    } else {
+        printf("Erro: 'isServ' não é um booleano válido no JSON.\n");
+    }
+    cJSON_Delete(json);
+}
+
+void lerJsonDoArquivo(const char *nomeArquivo) {
+    FILE *arquivo = fopen(nomeArquivo, "r");
+    if (arquivo == NULL) {
+        printf("Erro ao abrir o arquivo %s\n", nomeArquivo);
+        return;
+    }
+
+    char *conteudoJson = malloc(MAX_JSON_SIZE);
+    if (conteudoJson == NULL) {
+        printf("Erro ao alocar memória para o JSON.\n");
+        fclose(arquivo);
+        return;
+    }
+
+    size_t bytesLidos = fread(conteudoJson, 1, MAX_JSON_SIZE - 1, arquivo);
+    conteudoJson[bytesLidos] = '\0'; // Certifique-se de que a string seja terminada
+
+    fclose(arquivo);
+
+    preencherVariaveisComJson(conteudoJson);
+
+    free(conteudoJson);
+}
+
+void resetGame() {
+    if (isServ) {
+        int sock;
+        struct sockaddr_in me, from;
+        socklen_t adl = sizeof(from);
+
+        int loc_sockfd, loc_newsockfd, tamanho;
+        char linha[1000];
+        /* Estrutura: familia + endereco IP + porta */
+        struct sockaddr_in loc_addr;
+        loc_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+        if (loc_sockfd < 0) {
+            perror("Criando stream socket");
+            exit(1);
+        }
+
+        /* Construcao da estrutura do endereco local */
+        /* Preenchendo a estrutura socket loc_addr (familia, IP, porta) */
+        loc_addr.sin_family = AF_INET;         /* familia do protocolo*/
+        loc_addr.sin_addr.s_addr = INADDR_ANY; /* endereco IP local */
+        loc_addr.sin_port = htons(8080);       /* porta local  */
+        bzero(&(loc_addr.sin_zero), 8);
+
+        /* Bind para o endereco local*/
+        /* parametros(descritor socket, estrutura do endereco local, comprimento do endereco) */
+        if (bind(loc_sockfd, (struct sockaddr *)&loc_addr, sizeof(struct sockaddr)) < 0) {
+            perror("Ligando stream socket");
+            exit(1);
+        }
+
+        /* parametros(descritor socket,
+        numeros de conexoes em espera sem serem aceites pelo accept)*/
+        listen(loc_sockfd, 1);
+
+        tamanho = sizeof(struct sockaddr_in);
+        /* Accept permite aceitar um pedido de conexao, devolve um novo "socket" ja ligado ao emissor do pedido e o "socket" original*/
+        /* parametros(descritor socket, estrutura do endereco local, comprimento do endereco)*/
+        loc_newsockfd = accept(loc_sockfd, (struct sockaddr *)&loc_addr, &tamanho);
+
+        if (isJogadorVez) {
+            do {
+                Erro er1 = jogar(loc_newsockfd);
+                if (er1.isGanhou) {
+                    break;
+                }
+                Erro er2 = receberJogada(loc_newsockfd);
+                if (er2.isGanhou) {
+                    break;
+                }
+            } while (true);
+        }
+        else {
+            do {
+                Erro er2 = receberJogada(loc_newsockfd);
+                if (er2.isGanhou) {
+                    break;
+                }
+                Erro er1 = jogar(loc_newsockfd);
+                if (er1.isGanhou) {
+                    break;
+                }
+            } while (true);
+        }
+        close(loc_sockfd);
+        close(loc_newsockfd);
+    }
+    else {
+        char *rem_hostname;
+        int rem_port;
+        /* Estrutura: familia + endereco IP + porta */
+        struct sockaddr_in rem_addr;
+        int rem_sockfd;
+
+        char ipServ[INET_ADDRSTRLEN];
+        printf("Digite o IP do adversário:\n");
+        scanf("%s", ipServ);
+        rem_hostname = ipServ;
+        rem_port = 8080;
+        rem_addr.sin_family = AF_INET; /* familia do protocolo*/
+        rem_addr.sin_addr.s_addr = inet_addr(rem_hostname); /* endereco IP local */
+        rem_addr.sin_port = htons(rem_port); /* porta local  */
+
+        rem_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        
+        if (rem_sockfd < 0) {
+            perror("Criando stream socket");
+            exit(1);
+        }
+
+        if (connect(rem_sockfd, (struct sockaddr *) &rem_addr, sizeof(rem_addr)) < 0) {
+            perror("Conectando stream socket");
+            exit(1);
+        }
+        if (isJogadorVez) {
+            do {
+                Erro er1 = jogar(rem_sockfd);
+                if (er1.isGanhou) {
+                    break;
+                }
+                Erro er2 = receberJogada(rem_sockfd);
+                if (er2.isGanhou) {
+                    break;
+                }
+            } while (true);
+        }
+        else {
+            do {
+                Erro er2 = receberJogada(rem_sockfd);
+                if (er2.isGanhou) {
+                    break;
+                }
+                Erro er1 = jogar(rem_sockfd);
+                if (er1.isGanhou) {
+                    break;
+                }
+            } while (true);
+        }
+        close(rem_sockfd);
+    }
+}
+
 int main(int argc, char *argv[]) {
     int controleMenu = 0;
+    system("clear");
     do {
-        system("clear");
         printf("---------------------\n");
         printf("----Batalha Naval----\n");
         printf("---------------------\n");
-
         printf("1 - Iniciar a partida\n");
         printf("2 - Entrar em uma partida\n");
         printf("3 - Entrar em uma partida salva\n");
@@ -724,14 +1104,26 @@ int main(int argc, char *argv[]) {
         preencheComZerosGrades();
         switch (controleMenu) {
             case 1:
-                // Servidor
+                isServ = true;
+                isJogadorVez = true;
                 printf("Esperando o adversário conectar...\n");
-                mainServidor();
+                Erro es = mainServidor();
+                if (!es.isSuccess) {
+                    salvarJSONEmArquivo("dados.json");
+                }
                 break;
             case 2:
-                mainCliente();
+                isServ = false;
+                isJogadorVez = false;
+                Erro ec = mainCliente();
+                if (!ec.isSuccess) {
+                    salvarJSONEmArquivo("dados.json");
+                }
                 break;
             case 3:
+                char *nomeArquivo = "dados.json";
+                lerJsonDoArquivo(nomeArquivo);
+                resetGame();
                 break;
             case 4:
                 printf("Saindo\n");
@@ -746,3 +1138,4 @@ int main(int argc, char *argv[]) {
     } while (controleMenu!=4);
     exit(0);
 }
+
