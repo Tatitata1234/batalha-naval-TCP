@@ -605,7 +605,7 @@ void salvarJSONEmArquivo(char *nomeArquivo) {
     fclose(arquivo);
     free(jsonString);
 
-    printf("JSON salvo com sucesso no arquivo: %s\n", nomeArquivo);
+    //printf("JSON salvo com sucesso no arquivo: %s\n", nomeArquivo);
 }
 
 Erro jogar(int loc_newsockfd) {
