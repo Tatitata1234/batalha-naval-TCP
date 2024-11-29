@@ -150,8 +150,6 @@ Erro posicionaNavio(int coluna, int linha, char direcao,
             
             navio.posicoes[i][0] = linha;
             navio.posicoes[i][1] = navio.xi + i;
-            //printf("%d",navio.posicoes[i][0]);
-            //printf("%d",navio.posicoes[i][1]);
         } else if (direcao == 'V') {
             navio.posicoes[i][0] = linha + i;
             navio.posicoes[i][1] = navio.xi;
@@ -615,7 +613,7 @@ Erro jogar(int loc_newsockfd) {
         e.isGanhou = false;
         return e;
     }
-    salvarJSONEmArquivo("dados1.json");
+    salvarJSONEmArquivo("dados.json");
     return erroGanhou;
 }
 
